@@ -126,8 +126,8 @@ input{border:2px solid var(--bd);border-radius:3px}input:focus{outline:0;border-
 <script>
 /* Firebase-Zugangsdaten stehen in der Datei config.js (fehlt sie = Demo-Modus nur auf diesem Gerät) */
 const FB=window.FB_CONFIG||{dbUrl:"",apiKey:"",admin:""};
-const LOCAL=!FB.dbUrl,C=10,LS="bp3";
-let TB=0,EST={},DB={phase:"reg",tables:0,teams:{},matches:[]},last="",pend=false,off=false,A=null,H=[],D={name:"",m:["","","",""],err:""},dlg=null,ed=null,lo=null,fsv=false,tt;
+const LOCAL=!FB.dbUrl,C=10,LS="bp3",MIN=4;
+let TB=0,EST={},DB={phase:"reg",tables:0,teams:{},matches:[]},last="",pend=false,off=false,A=null,H=[],D={name:"",m:Array(MIN).fill(""),err:""},dlg=null,ed=null,lo=null,fsv=false,tt;
 try{A=JSON.parse(localStorage.getItem("bpA"))}catch(e){}
 const saveA=()=>{try{A?localStorage.setItem("bpA",JSON.stringify(A)):localStorage.removeItem("bpA")}catch(e){}};
 const esc=t=>String(t).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
@@ -155,11 +155,11 @@ async function undo(){const h=H.pop();if(!h)return;const s=JSON.parse(h),T={},M=
  await W({"state/phase":s.phase,"state/tables":s.tables||null,teams:Object.keys(T).length?T:null,matches:Object.keys(M).length?M:null},"Letzte Aktion rückgängig gemacht")}
 async function addTeam(){const name=D.name.trim().replace(/\s+/g," "),mem=D.m.map(x=>x.trim()).filter(Boolean),e=m=>{D.err=m;render()};
  if(!name)return e("Bitte einen Teamnamen eingeben.");if(name.length>40)return e("Der Teamname darf höchstens 40 Zeichen haben.");
- if(!mem.length)return e("Bitte mindestens ein Teammitglied eintragen.");
+ if(mem.length<MIN)return e("Bitte mindestens "+MIN+" Teammitglieder eintragen (aktuell "+mem.length+").");
  try{await sync()}catch(x){}
  if(DB.phase!=="reg")return e("Die Anmeldung ist leider schon geschlossen.");
  const k=kn(name);if(DB.teams[k])return e("Diesen Teamnamen gibt es schon – bitte einen anderen wählen.");
- try{await patch({["teams/"+k]:{name,members:mem}});D={name:"",m:["","","",""],err:""};await sync();toast("Team angemeldet ✓");render()}catch(x){e("Das hat nicht geklappt – evtl. ist der Name vergeben oder die Anmeldung geschlossen.")}}
+ try{await patch({["teams/"+k]:{name,members:mem}});D={name:"",m:Array(MIN).fill(""),err:""};await sync();toast("Team angemeldet ✓");render()}catch(x){e("Das hat nicht geklappt – evtl. ist der Name vergeben oder die Anmeldung geschlossen.")}}
 function circle(ids){const a=[...ids];if(a.length%2)a.push(null);const n=a.length,R=[];for(let r=0;r<n-1;r++){const p=[];for(let i=0;i<n/2;i++){const x=a[i],y=a[n-1-i];if(x&&y)p.push([x,y])}R.push(p);a.splice(1,0,a.pop())}return R}
 function sched(ids,T){const n=ids.length,k=Math.floor(n/2),M=n*(n-1)/2;T=Math.max(1,Math.min(T||k,k));
  let best=circle(ids).flatMap(p=>{const o=[];for(let i=0;i<p.length;i+=T)o.push(p.slice(i,i+T));return o});
@@ -188,11 +188,11 @@ function saveRes(){const{i,a:x,b:y}=dlg;
  if(x===y){dlg.err="Gleichstand ist nicht möglich – bitte Verlängerung spielen und das Ergebnis eintragen.";return render()}
  dlg=null;snap();W({[`matches/${i}/sa`]:x,[`matches/${i}/sb`]:y})}
 function delRes(){const{i}=dlg;dlg=null;snap();W({[`matches/${i}/sa`]:null,[`matches/${i}/sb`]:null})}
-function editT(k){const t=DB.teams[k];ed={k,name:t.name,m:t.members.length?[...t.members]:[""],err:""};render()}
+function editT(k){const t=DB.teams[k];ed={k,name:t.name,m:[...t.members,...Array(Math.max(0,MIN-t.members.length)).fill("")],err:""};render()}
 function saveT(){const name=ed.name.trim().replace(/\s+/g," "),mem=ed.m.map(x=>x.trim()).filter(Boolean),nk=kn(name),e=m=>{ed.err=m;render()};
  if(!name)return e("Bitte einen Teamnamen eingeben.");if(name.length>40)return e("Der Teamname darf höchstens 40 Zeichen haben.");
  if(nk!==ed.k&&DB.teams[nk])return e("Diesen Teamnamen gibt es schon.");
- if(!mem.length)return e("Bitte mindestens ein Teammitglied eintragen.");
+ if(mem.length<MIN)return e("Bitte mindestens "+MIN+" Teammitglieder eintragen (aktuell "+mem.length+").");
  const u={},o=ed.k;if(nk!==o){u["teams/"+o]=null;DB.matches.forEach(m=>{if(m.a===o)u[`matches/${m.i}/a`]=nk;if(m.b===o)u[`matches/${m.i}/b`]=nk})}
  u["teams/"+nk]={name,members:mem};ed=null;snap();W(u)}
 async function doLogin(){const p=document.getElementById("pw");try{await login(p?p.value:"");lo=null;render();toast("Als Orga angemeldet ✓")}catch(e){lo.err=e.message||"Anmeldung fehlgeschlagen.";render()}}
@@ -206,10 +206,10 @@ function tbl(tb,fin){return`<table class="tb"><tr><th>#</th><th>Team</th><th>Sp<
 const stat=()=>{const all=DB.matches,done=all.filter(m=>m.sa!=null).length;return{all,done,fin:all.length>0&&done===all.length}};
 function fsView(){const tb=table(),{all,done,fin}=stat();
  return`<div class="fsv"><div class="fh"><h2 class="os" style="margin:0;font-size:clamp(22px,4vw,40px)">Tabelle <span class="mu">(${done}/${all.length} Spiele)</span></h2><button onclick="toggleFs()">✕ Schließen</button></div>${fin?`<div class="ch">🏆 ${esc(tn(tb[0].id))} ist DHSN Leipzig Beer Pong Meister!</div>`:""}<div class="tw">${tbl(tb,fin)}</div><div class="mu" style="margin-top:8px">Sp = Spiele, S/N = Siege/Niederlagen, Pkt = Punkte, + getroffene Becher, − verlorene Becher, Δ = Becher-Differenz</div></div>`}
-function teamList(canEdit,canDel){const ks=Object.keys(DB.teams);return ks.map(k=>{const t=DB.teams[k];return`<div class="tm"><div><b>${esc(t.name)}</b>${t.members.length<4?'<span class="tag">unter 4</span>':""}<div class="mu">${t.members.map(esc).join(", ")} (${t.members.length})</div></div>${canEdit?`<div class="bar" style="flex-wrap:nowrap"><button onclick="editT('${k}')" title="Team bearbeiten">✎</button>${canDel?`<button onclick="delTeam('${k}')" title="Team entfernen">×</button>`:""}</div>`:""}</div>`}).join("")||'<div class="mu">Noch keine Teams angemeldet.</div>'}
+function teamList(canEdit,canDel){const ks=Object.keys(DB.teams);return ks.map(k=>{const t=DB.teams[k];return`<div class="tm"><div><b>${esc(t.name)}</b>${t.members.length<MIN?'<span class="tag">unter '+MIN+'</span>':""}<div class="mu">${t.members.map(esc).join(", ")} (${t.members.length})</div></div>${canEdit?`<div class="bar" style="flex-wrap:nowrap"><button onclick="editT('${k}')" title="Team bearbeiten">✎</button>${canDel?`<button onclick="delTeam('${k}')" title="Team entfernen">×</button>`:""}</div>`:""}</div>`}).join("")||'<div class="mu">Noch keine Teams angemeldet.</div>'}
 function regView(){const n=Object.keys(DB.teams).length,a=adm();
- const mem=D.m.map((v,i)=>`<div class="mr"><input value="${esc(v)}" placeholder="Mitglied ${i+1}" oninput="D.m[${i}]=this.value;D.err=''">${i>=4?`<button onclick="D.m.splice(${i},1);render()" title="Entfernen">×</button>`:""}</div>`).join("");
- return`<div class="g"><div class="card"><h2>Team anmelden</h2><br><input value="${esc(D.name)}" placeholder="Teamname" oninput="D.name=this.value;D.err=''" style="margin-bottom:8px" maxlength="40">${mem}<div class="mu" style="margin-bottom:8px">Empfohlen: 4 Mitglieder pro Team.</div><div class="er">${esc(D.err)}</div><div class="bar"><button onclick="D.m.push('');render()">+ Mitglied</button><button class="p" onclick="addTeam()">Team eintragen</button></div></div>
+ const mem=D.m.map((v,i)=>`<div class="mr"><input value="${esc(v)}" placeholder="Mitglied ${i+1}" oninput="D.m[${i}]=this.value;D.err=''">${i>=MIN?`<button onclick="D.m.splice(${i},1);render()" title="Entfernen">×</button>`:""}</div>`).join("");
+ return`<div class="g"><div class="card"><h2>Team anmelden</h2><br><input value="${esc(D.name)}" placeholder="Teamname" oninput="D.name=this.value;D.err=''" style="margin-bottom:8px" maxlength="40">${mem}<div class="mu" style="margin-bottom:8px">Mindestens ${MIN} Mitglieder pro Team – weitere per „+“.</div><div class="er">${esc(D.err)}</div><div class="bar"><button onclick="D.m.push('');render()">+ Mitglied</button><button class="p" onclick="addTeam()">Team eintragen</button></div></div>
  <div class="card"><h2>Teams (${n})</h2>${teamList(a,a)}${n>=2?`<div class="note">Jeder gegen jeden: ${n} Teams = <b>${n*(n-1)/2} Spiele</b>. Mit ${tbN(n)} Tischen dauert das <b>${est(n)} Runden</b> (alle Spiele einer Runde laufen gleichzeitig).${n%2?" Pro Runde setzt mindestens ein Team aus.":""} Sieg = 2 Punkte, bei Gleichstand zählt die Becher-Differenz.</div>`:""}
  ${a?`<div class="mr" style="margin-top:10px;align-items:center"><b>Anzahl Tische:</b><button onclick="setT(-1)">−</button><b>${tbN(n)}</b><button onclick="setT(1)">+</button></div><div class="bar" style="margin-top:8px"><button class="p" ${n<2?"disabled":""} onclick="draw()">Auslosen &amp; Turnier starten</button>${n?'<button onclick="clearAll()">Alle löschen</button>':""}</div>`:'<div class="mu" style="margin-top:8px">Das Turnier wird von der Orga gestartet und ausgelost.</div>'}</div></div>`}
 function card(m){const p=m.sa!=null,w=p?(m.sa>m.sb?"a":"b"):"",a=adm();
@@ -229,7 +229,7 @@ function dlgView(){if(!dlg)return"";const{i,a,b}=dlg,m=DB.matches.find(x=>x.i===
  <div class="er">${esc(dlg.err)}</div>${w?`<div class="note">Sieger: <b>${esc(tn(w))}</b></div>`:""}
  <div class="bar"><button class="p" onclick="saveRes()">Speichern</button><button onclick="dlg=null;render()">Abbrechen</button>${m.sa!=null?'<button onclick="delRes()">Ergebnis löschen</button>':""}</div></div></div>`}
 function edView(){if(!ed)return"";
- const mem=ed.m.map((v,i)=>`<div class="mr"><input value="${esc(v)}" placeholder="Mitglied ${i+1}" oninput="ed.m[${i}]=this.value;ed.err=''">${ed.m.length>1?`<button onclick="ed.m.splice(${i},1);render()" title="Entfernen">×</button>`:""}</div>`).join("");
+ const mem=ed.m.map((v,i)=>`<div class="mr"><input value="${esc(v)}" placeholder="Mitglied ${i+1}" oninput="ed.m[${i}]=this.value;ed.err=''">${ed.m.length>MIN?`<button onclick="ed.m.splice(${i},1);render()" title="Entfernen">×</button>`:""}</div>`).join("");
  return`<div class="ov"><div class="dg"><h2>Team bearbeiten</h2><input value="${esc(ed.name)}" placeholder="Teamname" maxlength="40" oninput="ed.name=this.value;ed.err=''" style="margin:8px 0">${mem}<div class="er">${esc(ed.err)}</div><div class="bar"><button onclick="ed.m.push('');render()">+ Mitglied</button><button class="p" onclick="saveT()">Speichern</button><button onclick="ed=null;render()">Abbrechen</button></div></div></div>`}
 function loView(){if(!lo)return"";return`<div class="ov"><div class="dg"><h2>Orga-Login</h2>${LOCAL?'<div class="mu">Demo-Modus: einfach bestätigen.</div>':'<input id="pw" type="password" placeholder="Orga-Passwort" style="margin:8px 0" onkeydown="if(event.key===\'Enter\')doLogin()">'}<div class="er">${esc(lo.err)}</div><div class="bar"><button class="p" onclick="doLogin()">Anmelden</button><button onclick="lo=null;render()">Abbrechen</button></div></div></div>`}
 function render(){pend=false;const a=adm(),play=DB.phase==="play";
