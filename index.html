@@ -103,6 +103,7 @@ input{border:2px solid var(--bd);border-radius:3px}input:focus{outline:0;border-
 .fsv .tb{font-size:clamp(15px,2.6vw,30px)}.fsv .tb th{font-size:clamp(14px,2.2vw,26px)}.fsv .tb td,.fsv .tb th{padding:clamp(8px,1.4vw,18px) 8px}
 .fh{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}
 .mn{font-size:11px;color:var(--mu);padding:3px 8px 0}
+.hp{position:absolute;left:-9999px;width:1px;height:1px;overflow:hidden}
 </style></head><body>
 <svg width="0" height="0" style="position:absolute"><defs>
 <filter id="rf" x="-5%" y="-40%" width="110%" height="180%"><feTurbulence type="fractalNoise" baseFrequency=".035" numOctaves="3" seed="4"/><feDisplacementMap in="SourceGraphic" scale="26"/></filter>
@@ -126,8 +127,8 @@ input{border:2px solid var(--bd);border-radius:3px}input:focus{outline:0;border-
 <script>
 /* Firebase-Zugangsdaten stehen in der Datei config.js (fehlt sie = Demo-Modus nur auf diesem Gerät) */
 const FB=window.FB_CONFIG||{dbUrl:"",apiKey:"",admin:""};
-const LOCAL=!FB.dbUrl,C=10,LS="bp3",MIN=4;
-let TB=0,EST={},DB={phase:"reg",tables:0,teams:{},matches:[]},last="",pend=false,off=false,A=null,H=[],D={name:"",m:Array(MIN).fill(""),err:""},dlg=null,ed=null,lo=null,fsv=false,tt;
+const LOCAL=!FB.dbUrl,C=10,LS="bp3",MIN=4,MAXT=64,MAXM=12;
+let T0=Date.now(),TB=0,EST={},DB={phase:"reg",tables:0,teams:{},matches:[]},last="",pend=false,off=false,A=null,H=[],D={name:"",m:Array(MIN).fill(""),err:""},dlg=null,ed=null,lo=null,fsv=false,tt;
 try{A=JSON.parse(localStorage.getItem("bpA"))}catch(e){}
 const saveA=()=>{try{A?localStorage.setItem("bpA",JSON.stringify(A)):localStorage.removeItem("bpA")}catch(e){}};
 const esc=t=>String(t).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
@@ -138,12 +139,12 @@ function toast(t){const e=document.getElementById("toast");e.textContent=t;e.sty
 function setP(o,p,v){for(let i=0;i<p.length-1;i++)o=o[p[i]]=o[p[i]]||{};if(v===null)delete o[p[p.length-1]];else o[p[p.length-1]]=v}
 async function load(){if(LOCAL){try{return JSON.parse(localStorage.getItem(LS))||{}}catch(e){return{}}}const r=await fetch(FB.dbUrl+"/.json");if(!r.ok)throw new Error("net");return await r.json()||{}}
 async function token(){if(LOCAL||!A)return null;if(Date.now()>A.exp-60000){const r=await fetch("https://securetoken.googleapis.com/v1/token?key="+FB.apiKey,{method:"POST",headers:{"Content-Type":"application/x-www-form-urlencoded"},body:"grant_type=refresh_token&refresh_token="+encodeURIComponent(A.ref)});const j=await r.json();if(!r.ok){A=null;saveA();return null}A={id:j.id_token,ref:j.refresh_token,exp:Date.now()+j.expires_in*1000};saveA()}return A.id}
-async function patch(u){if(LOCAL){const d=await load();for(const k in u)setP(d,k.split("/"),u[k]);localStorage.setItem(LS,JSON.stringify(d));return}
- const t=await token(),r=await fetch(FB.dbUrl+"/.json"+(t?"?auth="+t:""),{method:"PATCH",body:JSON.stringify(u)});if(!r.ok){let m="";try{m=(await r.json()).error||""}catch(x){}throw new Error(r.status+" "+m)}}
+async function patch(u,tok){if(LOCAL){const d=await load();for(const k in u)setP(d,k.split("/"),u[k]);localStorage.setItem(LS,JSON.stringify(d));return}
+ const t=tok||await token(),r=await fetch(FB.dbUrl+"/.json"+(t?"?auth="+t:""),{method:"PATCH",body:JSON.stringify(u)});if(!r.ok){let m="";try{m=(await r.json()).error||""}catch(x){}throw new Error(r.status+" "+m)}}
 async function login(pw){if(LOCAL){A={id:"x",ref:"",exp:9e15};saveA();return}
  const r=await fetch("https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key="+FB.apiKey,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({email:FB.admin,password:pw,returnSecureToken:true})}),j=await r.json();
  if(!r.ok)throw new Error("Falsches Passwort.");A={id:j.idToken,ref:j.refreshToken,exp:Date.now()+j.expiresIn*1000};saveA()}
-function norm(d){const t={};Object.entries(d.teams||{}).forEach(([k,v])=>t[k]={name:v.name,members:Object.values(v.members||{})});
+function norm(d){const t={};Object.entries(d.teams||{}).sort((a,b)=>(+a[0].slice(1)||0)-(+b[0].slice(1)||0)).forEach(([k,v])=>t[k]={name:v.name,nk:v.nk||kn(v.name),members:Object.values(v.members||{})});
  const M=d.matches||{},m=Object.keys(M).filter(i=>M[i]).sort((a,b)=>a-b).map(i=>({i:+i,a:M[i].a,b:M[i].b,r:M[i].r,t:M[i].t,sa:M[i].sa==null?null:M[i].sa,sb:M[i].sb==null?null:M[i].sb}));
  return{phase:(d.state||{}).phase||"reg",tables:+(d.state||{}).tables||0,teams:t,matches:m}}
 async function sync(){const d=norm(await load());last=JSON.stringify(d);DB=d}
@@ -152,17 +153,22 @@ document.addEventListener("focusout",()=>setTimeout(()=>{if(pend&&!busy())render
 async function W(u,ok){try{await patch(u);await sync();if(ok)toast(ok);render()}catch(e){toast("Speichern fehlgeschlagen – bitte erneut als Orga anmelden.");render()}}
 function snap(){H.push(JSON.stringify(DB));if(H.length>50)H.shift()}
 async function undo(){const h=H.pop();if(!h)return;const s=JSON.parse(h),T={},M={};Object.entries(s.teams).forEach(([k,v])=>T[k]=v);s.matches.forEach(m=>M[m.i]={a:m.a,b:m.b,r:m.r,t:m.t,sa:m.sa,sb:m.sb});
- await W({"state/phase":s.phase,"state/tables":s.tables||null,teams:Object.keys(T).length?T:null,matches:Object.keys(M).length?M:null},"Letzte Aktion rückgängig gemacht")}
-async function addTeam(){const name=D.name.trim().replace(/\s+/g," "),mem=D.m.map(x=>x.trim()).filter(Boolean),e=m=>{D.err=m;render()};
+ await W({"state/phase":s.phase,"state/tables":s.tables||null,names:Object.keys(T).length?Object.fromEntries(Object.entries(T).map(([k,v])=>[v.nk,k])):null,teams:Object.keys(T).length?T:null,matches:Object.keys(M).length?M:null},"Letzte Aktion rückgängig gemacht")}
+async function addTeam(){const name=D.name.trim().replace(/\s+/g," "),mem=D.m.map(x=>x.trim()).filter(Boolean),e=m=>{D.err=m;render()},a=adm(),nk=kn(name);
  if(!name)return e("Bitte einen Teamnamen eingeben.");if(name.length>40)return e("Der Teamname darf höchstens 40 Zeichen haben.");
  if(mem.length<MIN)return e("Bitte mindestens "+MIN+" Teammitglieder eintragen (aktuell "+mem.length+").");
+ if(mem.length>MAXM)return e("Höchstens "+MAXM+" Mitglieder pro Team.");
+ const reset=()=>{D={name:"",m:Array(MIN).fill(""),err:""}};
+ if(D.hp){reset();toast("Team angemeldet ✓");return render()}
+ if(!a&&Date.now()-T0<6000)return e("Das ging etwas zu schnell – bitte noch einmal absenden.");
  try{await sync()}catch(x){}
- if(DB.phase!=="reg")return e("Die Anmeldung ist leider schon geschlossen.");
- const k=kn(name);if(DB.teams[k])return e("Diesen Teamnamen gibt es schon – bitte einen anderen wählen.");
- try{await patch({["teams/"+k]:{name,members:mem}});D={name:"",m:Array(MIN).fill(""),err:""};await sync();toast("Team angemeldet ✓");render()}catch(x){try{await sync()}catch(y){return e("Keine Verbindung zum Server – bitte später noch einmal versuchen.")}
- if(DB.phase!=="reg")return e("Die Anmeldung ist leider schon geschlossen.");
- if(DB.teams[k])return e("Diesen Teamnamen gibt es schon – bitte einen anderen wählen.");
- e("Speichern nicht erlaubt ("+x.message+"). Bitte der Orga Bescheid geben – vermutlich stimmen die Firebase-Regeln nicht.")}}
+ const free=()=>{for(let i=0;i<MAXT;i++)if(!DB.teams["t"+i])return"t"+i;return null};
+ const bad=()=>DB.phase!=="reg"?"Die Anmeldung ist leider schon geschlossen.":Object.values(DB.teams).some(t=>t.nk===nk)?"Diesen Teamnamen gibt es schon – bitte einen anderen wählen.":!free()?"Das Turnier ist leider voll (höchstens "+MAXT+" Teams).":null;
+ let m=bad();if(m)return e(m);let err=null;
+ for(let at=0;at<3;at++){const s=free();try{await patch({["teams/"+s]:{name,nk,members:mem},["names/"+nk]:s});err=null;break}catch(x){err=x;try{await sync()}catch(y){return e("Keine Verbindung zum Server – bitte später noch einmal versuchen.")}if(bad())break}}
+ if(!err){reset();try{await sync()}catch(x){}toast("Team angemeldet ✓");return render()}
+ m=bad();if(m)return e(m);
+ e("Speichern nicht erlaubt ("+err.message+"). Bitte der Orga Bescheid geben – vermutlich stimmen die Firebase-Regeln nicht.")}
 function circle(ids){const a=[...ids];if(a.length%2)a.push(null);const n=a.length,R=[];for(let r=0;r<n-1;r++){const p=[];for(let i=0;i<n/2;i++){const x=a[i],y=a[n-1-i];if(x&&y)p.push([x,y])}R.push(p);a.splice(1,0,a.pop())}return R}
 function sched(ids,T){const n=ids.length,k=Math.floor(n/2),M=n*(n-1)/2;T=Math.max(1,Math.min(T||k,k));
  let best=circle(ids).flatMap(p=>{const o=[];for(let i=0;i<p.length;i+=T)o.push(p.slice(i,i+T));return o});
@@ -182,8 +188,8 @@ async function draw(){const ids=Object.keys(DB.teams);for(let i=ids.length-1;i>0
  R.forEach((p,r)=>p.forEach(([a,b],t)=>{M[k++]={a,b,r,t:t+1}}));
  snap();await W({"state/phase":"play","state/tables":T,matches:M},"Ausgelost ✓")}
 function toReg(){snap();W({"state/phase":"reg",matches:null})}
-function clearAll(){snap();W({"state/phase":"reg",matches:null,teams:null})}
-function delTeam(k){snap();W({["teams/"+k]:null})}
+function clearAll(){snap();W({"state/phase":"reg",matches:null,teams:null,names:null})}
+function delTeam(k){snap();W({["teams/"+k]:null,["names/"+DB.teams[k].nk]:null})}
 function openM(i){const m=DB.matches.find(x=>x.i===i);dlg={i,a:m.sa,b:m.sb,err:""};render()}
 function pick(s,v){dlg[s]=v;dlg.err="";render()}
 function saveRes(){const{i,a:x,b:y}=dlg;
@@ -192,12 +198,13 @@ function saveRes(){const{i,a:x,b:y}=dlg;
  dlg=null;snap();W({[`matches/${i}/sa`]:x,[`matches/${i}/sb`]:y})}
 function delRes(){const{i}=dlg;dlg=null;snap();W({[`matches/${i}/sa`]:null,[`matches/${i}/sb`]:null})}
 function editT(k){const t=DB.teams[k];ed={k,name:t.name,m:[...t.members,...Array(Math.max(0,MIN-t.members.length)).fill("")],err:""};render()}
-function saveT(){const name=ed.name.trim().replace(/\s+/g," "),mem=ed.m.map(x=>x.trim()).filter(Boolean),nk=kn(name),e=m=>{ed.err=m;render()};
+function saveT(){const name=ed.name.trim().replace(/\s+/g," "),mem=ed.m.map(x=>x.trim()).filter(Boolean),nk=kn(name),e=m=>{ed.err=m;render()},k=ed.k;
  if(!name)return e("Bitte einen Teamnamen eingeben.");if(name.length>40)return e("Der Teamname darf höchstens 40 Zeichen haben.");
- if(nk!==ed.k&&DB.teams[nk])return e("Diesen Teamnamen gibt es schon.");
+ if(Object.keys(DB.teams).some(x=>x!==k&&DB.teams[x].nk===nk))return e("Diesen Teamnamen gibt es schon.");
  if(mem.length<MIN)return e("Bitte mindestens "+MIN+" Teammitglieder eintragen (aktuell "+mem.length+").");
- const u={},o=ed.k;if(nk!==o){u["teams/"+o]=null;DB.matches.forEach(m=>{if(m.a===o)u[`matches/${m.i}/a`]=nk;if(m.b===o)u[`matches/${m.i}/b`]=nk})}
- u["teams/"+nk]={name,members:mem};ed=null;snap();W(u)}
+ if(mem.length>MAXM)return e("Höchstens "+MAXM+" Mitglieder pro Team.");
+ const u={},o=DB.teams[k].nk;if(nk!==o){u["names/"+o]=null;u["names/"+nk]=k}
+ u["teams/"+k]={name,nk,members:mem};ed=null;snap();W(u)}
 async function doLogin(){const p=document.getElementById("pw");try{await login(p?p.value:"");lo=null;render();toast("Als Orga angemeldet ✓")}catch(e){lo.err=e.message||"Anmeldung fehlgeschlagen.";render()}}
 function logout(){A=null;saveA();H=[];render()}
 function toggleFs(){fsv=!fsv;render();try{if(fsv){const e=document.documentElement;e.requestFullscreen&&e.requestFullscreen().catch(()=>{})}else if(document.fullscreenElement)document.exitFullscreen().catch(()=>{})}catch(x){}}
@@ -211,8 +218,8 @@ function fsView(){const tb=table(),{all,done,fin}=stat();
  return`<div class="fsv"><div class="fh"><h2 class="os" style="margin:0;font-size:clamp(22px,4vw,40px)">Tabelle <span class="mu">(${done}/${all.length} Spiele)</span></h2><button onclick="toggleFs()">✕ Schließen</button></div>${fin?`<div class="ch">🏆 ${esc(tn(tb[0].id))} ist DHSN Leipzig Beer Pong Meister!</div>`:""}<div class="tw">${tbl(tb,fin)}</div><div class="mu" style="margin-top:8px">Sp = Spiele, S/N = Siege/Niederlagen, Pkt = Punkte, + getroffene Becher, − verlorene Becher, Δ = Becher-Differenz</div></div>`}
 function teamList(canEdit,canDel){const ks=Object.keys(DB.teams);return ks.map(k=>{const t=DB.teams[k];return`<div class="tm"><div><b>${esc(t.name)}</b>${t.members.length<MIN?'<span class="tag">unter '+MIN+'</span>':""}<div class="mu">${t.members.map(esc).join(", ")} (${t.members.length})</div></div>${canEdit?`<div class="bar" style="flex-wrap:nowrap"><button onclick="editT('${k}')" title="Team bearbeiten">✎</button>${canDel?`<button onclick="delTeam('${k}')" title="Team entfernen">×</button>`:""}</div>`:""}</div>`}).join("")||'<div class="mu">Noch keine Teams angemeldet.</div>'}
 function regView(){const n=Object.keys(DB.teams).length,a=adm();
- const mem=D.m.map((v,i)=>`<div class="mr"><input value="${esc(v)}" placeholder="Mitglied ${i+1}" oninput="D.m[${i}]=this.value;D.err=''">${i>=MIN?`<button onclick="D.m.splice(${i},1);render()" title="Entfernen">×</button>`:""}</div>`).join("");
- return`<div class="g"><div class="card"><h2>Team anmelden</h2><br><input value="${esc(D.name)}" placeholder="Teamname" oninput="D.name=this.value;D.err=''" style="margin-bottom:8px" maxlength="40">${mem}<div class="mu" style="margin-bottom:8px">Mindestens ${MIN} Mitglieder pro Team – weitere per „+“.</div><div class="er">${esc(D.err)}</div><div class="bar"><button onclick="D.m.push('');render()">+ Mitglied</button><button class="p" onclick="addTeam()">Team eintragen</button></div></div>
+ const mem=D.m.map((v,i)=>`<div class="mr"><input value="${esc(v)}" placeholder="Mitglied ${i+1}" maxlength="30" oninput="D.m[${i}]=this.value;D.err=''">${i>=MIN?`<button onclick="D.m.splice(${i},1);render()" title="Entfernen">×</button>`:""}</div>`).join("");
+ return`<div class="g"><div class="card"><h2>Team anmelden</h2><br><input value="${esc(D.name)}" placeholder="Teamname" oninput="D.name=this.value;D.err=''" style="margin-bottom:8px" maxlength="40"><div class="hp" aria-hidden="true"><input tabindex="-1" autocomplete="off" placeholder="Webseite" oninput="D.hp=this.value"></div>${mem}<div class="mu" style="margin-bottom:8px">Mindestens ${MIN} Mitglieder pro Team – weitere per „+“.</div><div class="er">${esc(D.err)}</div><div class="bar">${D.m.length<MAXM?`<button onclick="D.m.push('');render()">+ Mitglied</button>`:""}<button class="p" onclick="addTeam()">Team eintragen</button></div></div>
  <div class="card"><h2>Teams (${n})</h2>${teamList(a,a)}${n>=2?`<div class="note">Jeder gegen jeden: ${n} Teams = <b>${n*(n-1)/2} Spiele</b>. Mit ${tbN(n)} Tischen dauert das <b>${est(n)} Runden</b> (alle Spiele einer Runde laufen gleichzeitig).${n%2?" Pro Runde setzt mindestens ein Team aus.":""} Sieg = 2 Punkte, bei Gleichstand zählt die Becher-Differenz.</div>`:""}
  ${a?`<div class="mr" style="margin-top:10px;align-items:center"><b>Anzahl Tische:</b><button onclick="setT(-1)">−</button><b>${tbN(n)}</b><button onclick="setT(1)">+</button></div><div class="bar" style="margin-top:8px"><button class="p" ${n<2?"disabled":""} onclick="draw()">Auslosen &amp; Turnier starten</button>${n?'<button onclick="clearAll()">Alle löschen</button>':""}</div>`:'<div class="mu" style="margin-top:8px">Das Turnier wird von der Orga gestartet und ausgelost.</div>'}</div></div>`}
 function card(m){const p=m.sa!=null,w=p?(m.sa>m.sb?"a":"b"):"",a=adm();
@@ -232,8 +239,8 @@ function dlgView(){if(!dlg)return"";const{i,a,b}=dlg,m=DB.matches.find(x=>x.i===
  <div class="er">${esc(dlg.err)}</div>${w?`<div class="note">Sieger: <b>${esc(tn(w))}</b></div>`:""}
  <div class="bar"><button class="p" onclick="saveRes()">Speichern</button><button onclick="dlg=null;render()">Abbrechen</button>${m.sa!=null?'<button onclick="delRes()">Ergebnis löschen</button>':""}</div></div></div>`}
 function edView(){if(!ed)return"";
- const mem=ed.m.map((v,i)=>`<div class="mr"><input value="${esc(v)}" placeholder="Mitglied ${i+1}" oninput="ed.m[${i}]=this.value;ed.err=''">${ed.m.length>MIN?`<button onclick="ed.m.splice(${i},1);render()" title="Entfernen">×</button>`:""}</div>`).join("");
- return`<div class="ov"><div class="dg"><h2>Team bearbeiten</h2><input value="${esc(ed.name)}" placeholder="Teamname" maxlength="40" oninput="ed.name=this.value;ed.err=''" style="margin:8px 0">${mem}<div class="er">${esc(ed.err)}</div><div class="bar"><button onclick="ed.m.push('');render()">+ Mitglied</button><button class="p" onclick="saveT()">Speichern</button><button onclick="ed=null;render()">Abbrechen</button></div></div></div>`}
+ const mem=ed.m.map((v,i)=>`<div class="mr"><input value="${esc(v)}" placeholder="Mitglied ${i+1}" maxlength="30" oninput="ed.m[${i}]=this.value;ed.err=''">${ed.m.length>MIN?`<button onclick="ed.m.splice(${i},1);render()" title="Entfernen">×</button>`:""}</div>`).join("");
+ return`<div class="ov"><div class="dg"><h2>Team bearbeiten</h2><input value="${esc(ed.name)}" placeholder="Teamname" maxlength="40" oninput="ed.name=this.value;ed.err=''" style="margin:8px 0">${mem}<div class="er">${esc(ed.err)}</div><div class="bar">${ed.m.length<MAXM?`<button onclick="ed.m.push('');render()">+ Mitglied</button>`:""}<button class="p" onclick="saveT()">Speichern</button><button onclick="ed=null;render()">Abbrechen</button></div></div></div>`}
 function loView(){if(!lo)return"";return`<div class="ov"><div class="dg"><h2>Orga-Login</h2>${LOCAL?'<div class="mu">Demo-Modus: einfach bestätigen.</div>':'<input id="pw" type="password" placeholder="Orga-Passwort" style="margin:8px 0" onkeydown="if(event.key===\'Enter\')doLogin()">'}<div class="er">${esc(lo.err)}</div><div class="bar"><button class="p" onclick="doLogin()">Anmelden</button><button onclick="lo=null;render()">Abbrechen</button></div></div></div>`}
 function render(){pend=false;const a=adm(),play=DB.phase==="play";
  const bar=a?`<button onclick="undo()" ${H.length?"":"disabled"}>↶ Zurück</button>${play?'<button onclick="toReg()">Zur Anmeldung</button><button onclick="draw()">Neu auslosen</button>':""}<button onclick="logout()">Abmelden</button>`:`<button onclick="lo={err:''};render()">🔒 Orga-Login</button>`;
