@@ -139,7 +139,7 @@ function setP(o,p,v){for(let i=0;i<p.length-1;i++)o=o[p[i]]=o[p[i]]||{};if(v===n
 async function load(){if(LOCAL){try{return JSON.parse(localStorage.getItem(LS))||{}}catch(e){return{}}}const r=await fetch(FB.dbUrl+"/.json");if(!r.ok)throw new Error("net");return await r.json()||{}}
 async function token(){if(LOCAL||!A)return null;if(Date.now()>A.exp-60000){const r=await fetch("https://securetoken.googleapis.com/v1/token?key="+FB.apiKey,{method:"POST",headers:{"Content-Type":"application/x-www-form-urlencoded"},body:"grant_type=refresh_token&refresh_token="+encodeURIComponent(A.ref)});const j=await r.json();if(!r.ok){A=null;saveA();return null}A={id:j.id_token,ref:j.refresh_token,exp:Date.now()+j.expires_in*1000};saveA()}return A.id}
 async function patch(u){if(LOCAL){const d=await load();for(const k in u)setP(d,k.split("/"),u[k]);localStorage.setItem(LS,JSON.stringify(d));return}
- const t=await token(),r=await fetch(FB.dbUrl+"/.json"+(t?"?auth="+t:""),{method:"PATCH",body:JSON.stringify(u)});if(!r.ok)throw new Error("w"+r.status)}
+ const t=await token(),r=await fetch(FB.dbUrl+"/.json"+(t?"?auth="+t:""),{method:"PATCH",body:JSON.stringify(u)});if(!r.ok){let m="";try{m=(await r.json()).error||""}catch(x){}throw new Error(r.status+" "+m)}}
 async function login(pw){if(LOCAL){A={id:"x",ref:"",exp:9e15};saveA();return}
  const r=await fetch("https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key="+FB.apiKey,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({email:FB.admin,password:pw,returnSecureToken:true})}),j=await r.json();
  if(!r.ok)throw new Error("Falsches Passwort.");A={id:j.idToken,ref:j.refreshToken,exp:Date.now()+j.expiresIn*1000};saveA()}
@@ -159,7 +159,10 @@ async function addTeam(){const name=D.name.trim().replace(/\s+/g," "),mem=D.m.ma
  try{await sync()}catch(x){}
  if(DB.phase!=="reg")return e("Die Anmeldung ist leider schon geschlossen.");
  const k=kn(name);if(DB.teams[k])return e("Diesen Teamnamen gibt es schon – bitte einen anderen wählen.");
- try{await patch({["teams/"+k]:{name,members:mem}});D={name:"",m:Array(MIN).fill(""),err:""};await sync();toast("Team angemeldet ✓");render()}catch(x){e("Das hat nicht geklappt – evtl. ist der Name vergeben oder die Anmeldung geschlossen.")}}
+ try{await patch({["teams/"+k]:{name,members:mem}});D={name:"",m:Array(MIN).fill(""),err:""};await sync();toast("Team angemeldet ✓");render()}catch(x){try{await sync()}catch(y){return e("Keine Verbindung zum Server – bitte später noch einmal versuchen.")}
+ if(DB.phase!=="reg")return e("Die Anmeldung ist leider schon geschlossen.");
+ if(DB.teams[k])return e("Diesen Teamnamen gibt es schon – bitte einen anderen wählen.");
+ e("Speichern nicht erlaubt ("+x.message+"). Bitte der Orga Bescheid geben – vermutlich stimmen die Firebase-Regeln nicht.")}}
 function circle(ids){const a=[...ids];if(a.length%2)a.push(null);const n=a.length,R=[];for(let r=0;r<n-1;r++){const p=[];for(let i=0;i<n/2;i++){const x=a[i],y=a[n-1-i];if(x&&y)p.push([x,y])}R.push(p);a.splice(1,0,a.pop())}return R}
 function sched(ids,T){const n=ids.length,k=Math.floor(n/2),M=n*(n-1)/2;T=Math.max(1,Math.min(T||k,k));
  let best=circle(ids).flatMap(p=>{const o=[];for(let i=0;i<p.length;i+=T)o.push(p.slice(i,i+T));return o});
